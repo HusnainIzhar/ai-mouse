@@ -1,75 +1,221 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AI Virtual Mouse</title>
     <style>
+        :root { --accent:#00d4a6; --bg:#0f1720; --muted:#9aa4b2; }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #1a1a1a;
-            color: white;
-            text-align: center;
-            margin: 0;
-            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #061218 0%, #0b1320 100%);
+            color: #e6eef6;
+            padding: 24px 16px;
         }
-        h1 {
-            color: #00ffcc;
+        .app { max-width: 1200px; margin: 0 auto; }
+        header {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 24px; margin-bottom: 32px; flex-wrap: wrap;
         }
-        .container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+        h1 { margin: 0; font-size: 1.6rem; color: var(--accent); }
+        .lead { margin: 4px 0 0 0; color: var(--muted); font-size: 0.95rem; }
+        .status-badge {
+            padding: 6px 12px; border-radius: 6px;
+            background: rgba(255,255,255,0.05); color: var(--muted);
+            font-size: 0.85rem;
         }
-        .video-container {
-            border: 5px solid #333;
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 0 20px rgba(0, 255, 204, 0.2);
+        .main { display: grid; grid-template-columns: 1fr 340px; gap: 24px; }
+        .panel {
+            background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px; padding: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
         }
-        img {
-            display: block;
-            max-width: 100%;
-            height: auto;
+        .video-wrap {
+            position: relative; border-radius: 10px; overflow: hidden;
+            background: #000; aspect-ratio: 4/3;
         }
-        .instructions {
-            margin-top: 20px;
-            background-color: #333;
-            padding: 20px;
-            border-radius: 10px;
-            max-width: 600px;
+        #video { width: 100%; height: 100%; display: block; }
+        #overlay { position: absolute; inset: 0; }
+        .controls { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-top: 12px; flex-wrap: wrap; }
+        .btn {
+            background: var(--accent); color: #042027; border: none;
+            padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 500;
+            transition: opacity 0.2s;
         }
-        .instruction-item {
-            margin: 10px 0;
-            font-size: 1.2em;
+        .btn:hover { opacity: 0.9; }
+        label { display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--muted); }
+        input[type=checkbox] { cursor: pointer; }
+        .slider-group {
+            display: flex; flex-direction: column; gap: 10px;
         }
-        .highlight {
-            color: #00ffcc;
-            font-weight: bold;
+        .slider-row {
+            display: flex; align-items: center; gap: 8px;
+        }
+        .slider-row label { min-width: 50px; margin: 0; font-size: 0.85rem; }
+        .slider-row input[type=range] { flex: 1; }
+        .slider-val { color: var(--muted); font-size: 0.85rem; min-width: 35px; text-align: right; }
+        .mask-preview { width: 100%; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04); background: #000; margin-top: 8px; }
+        .info-text { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+        ul { margin: 8px 0 0 16px; padding: 0; }
+        li { margin: 4px 0; }
+        @media (max-width: 900px) {
+            .main { grid-template-columns: 1fr; }
+            header { gap: 12px; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>AI Virtual Mouse (Web App)</h1>
-        
-        <div class="video-container">
-            <img src="{{ url_for('video_feed') }}" alt="Video Feed">
-        </div>
+  <div class="app">
+    <header>
+      <div>
+        <h1>AI Virtual Mouse</h1>
+        <p class="lead">Control your cursor using a blue object and your webcam. Tune HSV sliders to detect reliably.</p>
+      </div>
+      <div class="status-badge">Status: <span id="statusText">Initializing...</span></div>
+    </header>
 
-        <div class="instructions">
-            <h2>How to Use</h2>
-            <div class="instruction-item">
-                1. Hold a <span class="highlight">BLUE Object</span> to the camera.
-            </div>
-            <div class="instruction-item">
-                2. <span class="highlight">Move</span> the object to control the cursor.
-            </div>
-            <div class="instruction-item">
-                3. Move it <span class="highlight">Closer</span> to click.
-            </div>
+    <section class="main">
+      <div class="panel">
+        <div class="video-wrap">
+          <video id="video" autoplay playsinline></video>
+          <canvas id="overlay"></canvas>
         </div>
-    </div>
+        <div class="controls">
+          <div class="info-text">💡 Point camera at a blue object, adjust sliders below to refine detection.</div>
+          <div style="display: flex; gap: 8px;">
+            <button id="applyHSV" class="btn">Apply HSV</button>
+            <label><input type="checkbox" id="enableMouse"> <strong>Enable Mouse</strong></label>
+          </div>
+        </div>
+      </div>
+
+      <aside class="panel">
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <div>
+            <strong style="color: var(--accent);">⚙ HSV Tuning</strong>
+            <p class="info-text" style="margin: 4px 0 0 0;">Adjust sliders to match your object color.</p>
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-row"><label>H min</label><input id="hmin" type="range" min="0" max="179" value="100"><div class="slider-val" id="hminVal">100</div></div>
+            <div class="slider-row"><label>H max</label><input id="hmax" type="range" min="0" max="179" value="130"><div class="slider-val" id="hmaxVal">130</div></div>
+            <div class="slider-row"><label>S min</label><input id="smin" type="range" min="0" max="255" value="50"><div class="slider-val" id="sminVal">50</div></div>
+            <div class="slider-row"><label>S max</label><input id="smax" type="range" min="0" max="255" value="255"><div class="slider-val" id="smaxVal">255</div></div>
+            <div class="slider-row"><label>V min</label><input id="vmin" type="range" min="0" max="255" value="50"><div class="slider-val" id="vminVal">50</div></div>
+            <div class="slider-row"><label>V max</label><input id="vmax" type="range" min="0" max="255" value="255"><div class="slider-val" id="vmaxVal">255</div></div>
+          </div>
+
+          <div>
+            <div class="info-text" style="margin-bottom: 6px;">📋 Mask Preview</div>
+            <img id="maskPreview" class="mask-preview" src="" alt="color mask">
+          </div>
+
+          <div class="info-text">
+            <strong>📌 How to use:</strong>
+            <ul>
+              <li>Show a bright, saturated blue object</li>
+              <li>Adjust sliders until mask is solid white</li>
+              <li>Toggle "Enable Mouse" to control cursor</li>
+              <li>Move object to move cursor; bring closer to click</li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+    </section>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const overlay = document.getElementById('overlay');
+    const overlayCtx = overlay.getContext('2d');
+    const statusText = document.getElementById('statusText');
+    
+    // Sync slider value displays
+    const sliders = ['hmin', 'hmax', 'smin', 'smax', 'vmin', 'vmax'];
+    sliders.forEach(id => {
+      const el = document.getElementById(id);
+      const val = document.getElementById(id + 'Val');
+      el.addEventListener('input', () => { val.textContent = el.value; });
+    });
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        video.addEventListener('loadedmetadata', () => {
+          overlay.width = video.videoWidth;
+          overlay.height = video.videoHeight;
+          statusText.textContent = 'Camera active';
+        });
+        setInterval(sendFrame, 180);
+      } catch (err) {
+        console.error('Camera error:', err);
+        statusText.textContent = 'Camera access denied';
+      }
+    }
+
+    async function sendFrame() {
+      if (!video.videoWidth) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      canvas.toBlob(async (blob) => {
+        try {
+          const resp = await fetch('/frame', { method: 'POST', body: await blob.arrayBuffer(), headers: { 'Content-Type': 'application/octet-stream' } });
+          const data = await resp.json();
+          drawOverlay(data);
+          if (data && data.mask) {
+            document.getElementById('maskPreview').src = 'data:image/jpeg;base64,' + data.mask;
+          }
+          if (data && data.found) {
+            statusText.textContent = `Detected (${data.cx},${data.cy}) area=${data.area}`;
+          } else {
+            statusText.textContent = 'No object detected';
+          }
+        } catch (e) {
+          console.error('upload error:', e);
+        }
+      }, 'image/jpeg', 0.7);
+    }
+
+    function drawOverlay(data) {
+      overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+      if (!data || !data.found) return;
+      const x = data.cx, y = data.cy, area = data.area;
+      overlayCtx.strokeStyle = '#00ffcc';
+      overlayCtx.lineWidth = 3;
+      overlayCtx.beginPath();
+      overlayCtx.arc(x, y, Math.max(8, Math.min(60, Math.sqrt(area || 100))), 0, Math.PI * 2);
+      overlayCtx.stroke();
+      if (area > 2000) {
+        overlayCtx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+        overlayCtx.fillRect(x - 30, y - 40, 70, 20);
+        overlayCtx.fillStyle = '#00ffcc';
+        overlayCtx.font = '12px sans-serif';
+        overlayCtx.fillText('CLICK', x - 22, y - 25);
+      }
+    }
+
+    document.getElementById('applyHSV').addEventListener('click', async () => {
+      const body = {};
+      sliders.forEach(id => { body[id] = parseInt(document.getElementById(id).value); });
+      try {
+        await fetch('/set_hsv', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        statusText.textContent = 'HSV applied ✓';
+      } catch (e) { console.error(e); }
+    });
+
+    document.getElementById('enableMouse').addEventListener('change', async (e) => {
+      try {
+        await fetch('/set_mouse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perform: e.target.checked }) });
+        statusText.textContent = e.target.checked ? 'Mouse enabled ✓' : 'Mouse disabled';
+      } catch (e) { console.error(e); }
+    });
+
+    startCamera();
+  </script>
 </body>
 </html>
